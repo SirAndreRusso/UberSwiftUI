@@ -10,6 +10,7 @@ import MapKit
 
 struct UberMapViewRepresentable: UIViewRepresentable {
     @EnvironmentObject var locationViewModel: LocationSearchViewModel
+    @Binding var mapstate: MapViewState
     let mapView = MKMapView()
     let locationManager = LocationManager()
     
@@ -23,10 +24,23 @@ struct UberMapViewRepresentable: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: UIViewType, context: Context) {
-        if let coordinate = locationViewModel.selectedLocationCoordinate {
+        print("mapstate is \(mapstate)")
+        switch mapstate {
             
-            context.coordinator.addAndSelectAnnotation(withCoordinate: coordinate)
+        case .noInput:
+            context.coordinator.clearMapViewAndRecenterOnUserLocation()
+            break
+        case .searchingForLocation:
+            break
+        case .locationSelected:
+            if let coordinate = locationViewModel.selectedLocationCoordinate {
+                context.coordinator.addAndSelectAnnotation(withCoordinate: coordinate)
+                context.coordinator.configurePolyline(withDestinationCoordinate: coordinate)
+            }
         }
+        
+        
+       
     }
     
     func makeCoordinator() -> MapCoordinator {
@@ -40,7 +54,8 @@ class MapCoordinator: NSObject, MKMapViewDelegate {
     //MARK: - Properties
     
     let parent: UberMapViewRepresentable
-    
+    var userLocationCoordinate: CLLocationCoordinate2D?
+    var currentRegion: MKCoordinateRegion?
     //MARK: - Lifecycle
     
     init(parent: UberMapViewRepresentable) {
@@ -51,9 +66,19 @@ class MapCoordinator: NSObject, MKMapViewDelegate {
     //MARK: - MKMapview delegate
     
     func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
+        self.userLocationCoordinate = userLocation.coordinate
         let region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: userLocation.coordinate.latitude, longitude: userLocation.coordinate.longitude),
                                         span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05))
         parent.mapView.setRegion(region, animated: true)
+        self.currentRegion = region
+    }
+    
+    func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+        let polyline = MKPolylineRenderer(overlay: overlay)
+        polyline.strokeColor = .systemBlue
+        polyline.lineWidth = 6
+        return polyline
+        
     }
     
     //MARK: - Helpers
@@ -65,5 +90,38 @@ class MapCoordinator: NSObject, MKMapViewDelegate {
         parent.mapView.addAnnotation(annotation)
         parent.mapView.selectAnnotation(annotation, animated: true)
         parent.mapView.showAnnotations(parent.mapView.annotations, animated: true)
+    }
+    
+    func configurePolyline(withDestinationCoordinate coordinate: CLLocationCoordinate2D) {
+        guard let userLocationCoordinate = self.userLocationCoordinate else {return}
+        getDestinationRoute(from: userLocationCoordinate,
+                            to: coordinate) { route in
+            self.parent.mapView.addOverlay(route.polyline)
+        }
+    }
+    
+    func getDestinationRoute(from userlocation: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D, completion: @escaping(MKRoute)->()) {
+        let userPlacemark = MKPlacemark(coordinate: userlocation)
+        let destinationPlacemark = MKPlacemark(coordinate: destination)
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: userPlacemark)
+        request.destination = MKMapItem(placemark: MKPlacemark(placemark: destinationPlacemark))
+        let directions = MKDirections(request: request)
+        directions.calculate { responce, error in
+            if let error {
+                print("failed  to get directions with error: \(error.localizedDescription)")
+                return
+            }
+            guard let route = responce?.routes.first else {return}
+            completion(route)
+        }
+    }
+    
+    func clearMapViewAndRecenterOnUserLocation() {
+        parent.mapView.removeAnnotations(parent.mapView.annotations)
+        parent.mapView.removeOverlays(parent.mapView.overlays)
+        if let currentRegion {
+            parent.mapView.setRegion(currentRegion, animated: true)
+        }
     }
 }
