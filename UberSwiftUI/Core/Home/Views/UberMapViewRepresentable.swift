@@ -12,7 +12,6 @@ struct UberMapViewRepresentable: UIViewRepresentable {
     @EnvironmentObject var locationViewModel: LocationSearchViewModel
     @Binding var mapstate: MapViewState
     let mapView = MKMapView()
-    let locationManager = LocationManager()
     
     func makeUIView(context: Context) -> some UIView {
         mapView.delegate = context.coordinator
