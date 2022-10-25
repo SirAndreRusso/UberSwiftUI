@@ -32,7 +32,7 @@ struct UberMapViewRepresentable: UIViewRepresentable {
         case .searchingForLocation:
             break
         case .locationSelected:
-            if let coordinate = locationViewModel.selectedLocationCoordinate {
+            if let coordinate = locationViewModel.selectedUberLocation?.coordinate {
                 context.coordinator.addAndSelectAnnotation(withCoordinate: coordinate)
                 context.coordinator.configurePolyline(withDestinationCoordinate: coordinate)
             }
@@ -93,7 +93,7 @@ class MapCoordinator: NSObject, MKMapViewDelegate {
     
     func configurePolyline(withDestinationCoordinate coordinate: CLLocationCoordinate2D) {
         guard let userLocationCoordinate = self.userLocationCoordinate else {return}
-        getDestinationRoute(from: userLocationCoordinate,
+        parent.locationViewModel.getDestinationRoute(from: userLocationCoordinate,
                             to: coordinate) { route in
             self.parent.mapView.addOverlay(route.polyline)
             let rect = self.parent.mapView.mapRectThatFits(route.polyline.boundingMapRect, edgePadding: .init(top: 64, left: 32, bottom: 500, right: 32))
@@ -101,22 +101,7 @@ class MapCoordinator: NSObject, MKMapViewDelegate {
         }
     }
     
-    func getDestinationRoute(from userlocation: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D, completion: @escaping(MKRoute)->()) {
-        let userPlacemark = MKPlacemark(coordinate: userlocation)
-        let destinationPlacemark = MKPlacemark(coordinate: destination)
-        let request = MKDirections.Request()
-        request.source = MKMapItem(placemark: userPlacemark)
-        request.destination = MKMapItem(placemark: MKPlacemark(placemark: destinationPlacemark))
-        let directions = MKDirections(request: request)
-        directions.calculate { responce, error in
-            if let error {
-                print("failed  to get directions with error: \(error.localizedDescription)")
-                return
-            }
-            guard let route = responce?.routes.first else {return}
-            completion(route)
-        }
-    }
+  
     
     func clearMapViewAndRecenterOnUserLocation() {
         parent.mapView.removeAnnotations(parent.mapView.annotations)
